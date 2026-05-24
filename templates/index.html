@@ -1,0 +1,271 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Manga Finder</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #0f0f13; color: #e0e0e0; min-height: 100vh; }
+
+    header { background: #1a1a2e; border-bottom: 2px solid #7c3aed; padding: 1rem 1.5rem; display: flex; align-items: center; gap: 1.5rem; flex-wrap: wrap; }
+    header h1 { font-size: 1.4rem; color: #a78bfa; font-weight: 700; }
+    .stats-bar { display: flex; gap: 1rem; flex-wrap: wrap; }
+    .stat { background: #16213e; padding: 0.3rem 0.8rem; border-radius: 20px; font-size: 0.8rem; }
+    .stat span { font-weight: 700; color: #a78bfa; }
+
+    .controls { padding: 1rem 1.5rem; background: #13131f; border-bottom: 1px solid #2d2d44; display: flex; gap: 0.75rem; flex-wrap: wrap; align-items: center; }
+    input, select { background: #1e1e30; border: 1px solid #3d3d5c; color: #e0e0e0; border-radius: 6px; padding: 0.45rem 0.75rem; font-size: 0.9rem; outline: none; }
+    input:focus, select:focus { border-color: #7c3aed; }
+    input[type="text"] { min-width: 220px; }
+    button { cursor: pointer; border: none; border-radius: 6px; padding: 0.45rem 1rem; font-size: 0.9rem; font-weight: 600; transition: opacity 0.15s; }
+    button:hover { opacity: 0.85; }
+    .btn-primary { background: #7c3aed; color: #fff; }
+    .btn-success { background: #059669; color: #fff; }
+    .btn-warning { background: #d97706; color: #fff; }
+    .btn-sm { padding: 0.25rem 0.6rem; font-size: 0.8rem; }
+
+    .progress-wrap { padding: 0.6rem 1.5rem; background: #13131f; display: none; }
+    .progress-wrap.visible { display: block; }
+    .progress-bar-track { background: #2d2d44; border-radius: 4px; height: 8px; overflow: hidden; }
+    .progress-bar-fill { height: 100%; background: #7c3aed; transition: width 0.3s; border-radius: 4px; }
+    .progress-label { font-size: 0.8rem; color: #9ca3af; margin-top: 0.3rem; }
+
+    .table-wrap { padding: 1rem 1.5rem; overflow-x: auto; }
+    table { width: 100%; border-collapse: collapse; font-size: 0.88rem; }
+    th { background: #1a1a2e; color: #a78bfa; text-align: left; padding: 0.6rem 0.75rem; border-bottom: 2px solid #3d3d5c; white-space: nowrap; }
+    td { padding: 0.5rem 0.75rem; border-bottom: 1px solid #1e1e30; vertical-align: middle; }
+    tr:hover td { background: #16213e; }
+
+    .badge { display: inline-block; padding: 0.15rem 0.5rem; border-radius: 12px; font-size: 0.75rem; font-weight: 600; }
+    .badge-siguiendo { background: #1e3a5f; color: #60a5fa; }
+    .badge-leyendo   { background: #1a3a2e; color: #34d399; }
+    .badge-pendiente { background: #3a2d1a; color: #fbbf24; }
+    .badge-leido     { background: #2d1a3a; color: #c084fc; }
+
+    .ss-found     { color: #34d399; }
+    .ss-not_found { color: #f87171; }
+    .ss-pending   { color: #9ca3af; }
+    .ss-error     { color: #fb923c; }
+
+    .ok-yes { color: #34d399; font-weight: 700; }
+    .ok-no  { color: #f87171; font-weight: 700; }
+    .ok-na  { color: #6b7280; }
+
+    .lang-tag { display: inline-block; background: #1e3a5f; color: #93c5fd; border-radius: 4px; padding: 0.1rem 0.4rem; font-size: 0.75rem; margin-right: 2px; }
+
+    a.mdx-link { color: #818cf8; text-decoration: none; }
+    a.mdx-link:hover { text-decoration: underline; }
+
+    .pagination { display: flex; gap: 0.5rem; align-items: center; justify-content: center; padding: 1rem; }
+    .pagination button { padding: 0.4rem 0.9rem; }
+
+    .empty { text-align: center; padding: 3rem; color: #6b7280; }
+  </style>
+</head>
+<body>
+
+<header>
+  <h1>Manga Finder</h1>
+  <div class="stats-bar" id="statsBar">
+    <div class="stat">Total: <span id="sTotal">{{ stats.total }}</span></div>
+    <div class="stat">Encontrados: <span id="sFound">{{ stats.found }}</span></div>
+    <div class="stat">No encontrados: <span id="sNotFound">{{ stats.not_found }}</span></div>
+    <div class="stat">Pendientes: <span id="sPending">{{ stats.pending }}</span></div>
+    <div class="stat">Cap. OK: <span id="sChapOk">{{ stats.chapters_ok }}</span></div>
+  </div>
+  <div style="margin-left:auto; display:flex; gap:0.5rem;">
+    <button class="btn-primary" onclick="startSearch()">Buscar Todo</button>
+    <a href="/api/export/csv"><button class="btn-success">Exportar CSV</button></a>
+  </div>
+</header>
+
+<div class="progress-wrap" id="progressWrap">
+  <div class="progress-bar-track"><div class="progress-bar-fill" id="progressFill" style="width:0%"></div></div>
+  <div class="progress-label" id="progressLabel">Iniciando...</div>
+</div>
+
+<div class="controls">
+  <input type="text" id="searchQ" placeholder="Buscar por título..." oninput="debounceLoad()">
+  <select id="filterSearchStatus" onchange="loadPage(0)">
+    <option value="">Estado búsqueda: todos</option>
+    <option value="pending">Pendiente</option>
+    <option value="found">Encontrado</option>
+    <option value="not_found">No encontrado</option>
+    <option value="error">Error</option>
+  </select>
+  <select id="filterReadingStatus" onchange="loadPage(0)">
+    <option value="">Estado lectura: todos</option>
+    <option value="leyendo">Leyendo</option>
+    <option value="siguiendo">Siguiendo</option>
+    <option value="pendiente">Pendiente</option>
+    <option value="leido">Leído</option>
+  </select>
+  <select id="filterLang" onchange="loadPage(0)">
+    <option value="">Idioma: todos</option>
+    <option value="es">Español</option>
+    <option value="en">Inglés</option>
+  </select>
+  <select id="pageSize" onchange="loadPage(0)">
+    <option value="50">50 por página</option>
+    <option value="100">100 por página</option>
+    <option value="200">200 por página</option>
+  </select>
+</div>
+
+<div class="table-wrap">
+  <table>
+    <thead>
+      <tr>
+        <th>#</th>
+        <th>Título</th>
+        <th>Cap. Leídos</th>
+        <th>Estado</th>
+        <th>Búsqueda</th>
+        <th>URL MangaDex</th>
+        <th>Idiomas</th>
+        <th>Cap. ES</th>
+        <th>Cap. EN</th>
+        <th>Cap. OK</th>
+        <th>Score</th>
+        <th></th>
+      </tr>
+    </thead>
+    <tbody id="tableBody">
+      <tr><td colspan="12" class="empty">Cargando...</td></tr>
+    </tbody>
+  </table>
+</div>
+
+<div class="pagination" id="pagination"></div>
+
+<script>
+  let currentOffset = 0;
+  let totalRows = 0;
+  let debounceTimer = null;
+  let progressInterval = null;
+
+  function debounceLoad() {
+    clearTimeout(debounceTimer);
+    debounceTimer = setTimeout(() => loadPage(0), 400);
+  }
+
+  function getPageSize() { return parseInt(document.getElementById('pageSize').value); }
+
+  async function loadPage(offset) {
+    currentOffset = offset;
+    const q = document.getElementById('searchQ').value.trim();
+    const ss = document.getElementById('filterSearchStatus').value;
+    const rs = document.getElementById('filterReadingStatus').value;
+    const lang = document.getElementById('filterLang').value;
+    const limit = getPageSize();
+
+    const params = new URLSearchParams({ limit, offset });
+    if (q) params.set('q', q);
+    if (ss) params.set('search_status', ss);
+    if (rs) params.set('reading_status', rs);
+    if (lang) params.set('language', lang);
+
+    const resp = await fetch('/api/mangas?' + params);
+    const data = await resp.json();
+    totalRows = data.total;
+    renderTable(data.items, offset);
+    renderPagination(data.total, offset, limit);
+  }
+
+  function renderTable(items, offset) {
+    const tbody = document.getElementById('tableBody');
+    if (!items.length) {
+      tbody.innerHTML = '<tr><td colspan="12" class="empty">Sin resultados</td></tr>';
+      return;
+    }
+    tbody.innerHTML = items.map((m, i) => {
+      const num = offset + i + 1;
+      const statusBadge = `<span class="badge badge-${m.status}">${m.status}</span>`;
+      const ssClass = `ss-${m.search_status}`;
+      const ssLabel = { found: 'Encontrado', not_found: 'No encontrado', pending: 'Pendiente', error: 'Error' }[m.search_status] || m.search_status;
+      const url = m.mangadex_url
+        ? `<a class="mdx-link" href="${m.mangadex_url}" target="_blank">Abrir ↗</a>`
+        : '<span style="color:#4b5563">—</span>';
+      const langs = (m.available_languages || []).map(l => `<span class="lang-tag">${l}</span>`).join('') || '<span style="color:#4b5563">—</span>';
+      const chapOk = m.chapters_ok === true ? '<span class="ok-yes">✓</span>'
+                   : m.chapters_ok === false ? '<span class="ok-no">✗</span>'
+                   : '<span class="ok-na">—</span>';
+      const score = m.match_score !== null && m.match_score !== undefined ? parseFloat(m.match_score).toFixed(0) + '%' : '—';
+      const chES = m.chapters_available_es !== null && m.chapters_available_es !== undefined ? m.chapters_available_es : '—';
+      const chEN = m.chapters_available_en !== null && m.chapters_available_en !== undefined ? m.chapters_available_en : '—';
+      return `<tr>
+        <td>${num}</td>
+        <td style="max-width:320px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${escHtml(m.title)}">${escHtml(m.title)}</td>
+        <td>${m.chapters_read}</td>
+        <td>${statusBadge}</td>
+        <td class="${ssClass}">${ssLabel}</td>
+        <td>${url}</td>
+        <td>${langs}</td>
+        <td>${chES}</td>
+        <td>${chEN}</td>
+        <td>${chapOk}</td>
+        <td>${score}</td>
+        <td><button class="btn-warning btn-sm" onclick="retryManga(${m.id})">↺</button></td>
+      </tr>`;
+    }).join('');
+  }
+
+  function escHtml(s) {
+    return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+  }
+
+  function renderPagination(total, offset, limit) {
+    const el = document.getElementById('pagination');
+    const page = Math.floor(offset / limit);
+    const pages = Math.ceil(total / limit);
+    if (pages <= 1) { el.innerHTML = `<span style="color:#6b7280;font-size:0.85rem">${total} resultados</span>`; return; }
+    let html = '';
+    if (page > 0) html += `<button class="btn-primary btn-sm" onclick="loadPage(${(page-1)*limit})">← Anterior</button>`;
+    html += `<span style="color:#9ca3af;font-size:0.85rem">Página ${page+1} de ${pages} (${total} resultados)</span>`;
+    if (page < pages - 1) html += `<button class="btn-primary btn-sm" onclick="loadPage(${(page+1)*limit})">Siguiente →</button>`;
+    el.innerHTML = html;
+  }
+
+  async function startSearch() {
+    const resp = await fetch('/api/search/start', { method: 'POST' });
+    const data = await resp.json();
+    if (data.status === 'already_running') { alert('La búsqueda ya está en progreso.'); return; }
+    document.getElementById('progressWrap').classList.add('visible');
+    progressInterval = setInterval(pollProgress, 2000);
+  }
+
+  async function pollProgress() {
+    const resp = await fetch('/api/search/progress');
+    const p = await resp.json();
+    const pct = p.total > 0 ? (p.done / p.total * 100) : 0;
+    document.getElementById('progressFill').style.width = pct.toFixed(1) + '%';
+    document.getElementById('progressLabel').textContent =
+      `${p.done} / ${p.total} procesados — Encontrados: ${p.found} | No encontrados: ${p.not_found} | Errores: ${p.errors}`;
+    if (!p.running && p.done > 0) {
+      clearInterval(progressInterval);
+      await refreshStats();
+      loadPage(currentOffset);
+    }
+  }
+
+  async function retryManga(id) {
+    await fetch(`/api/search/${id}/retry`, { method: 'POST' });
+    setTimeout(() => loadPage(currentOffset), 3000);
+  }
+
+  async function refreshStats() {
+    const resp = await fetch('/api/stats');
+    const s = await resp.json();
+    document.getElementById('sTotal').textContent = s.total;
+    document.getElementById('sFound').textContent = s.found;
+    document.getElementById('sNotFound').textContent = s.not_found;
+    document.getElementById('sPending').textContent = s.pending;
+    document.getElementById('sChapOk').textContent = s.chapters_ok;
+  }
+
+  // Initial load
+  loadPage(0);
+</script>
+</body>
+</html>
